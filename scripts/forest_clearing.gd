@@ -15,11 +15,11 @@ const BOY_ROWS := [[0, false], [1, false], [2, false], [3, false], [4, false], [
 const FAUN_ROWS := [[0, false], [7, true], [2, false], [3, false], [4, false], [5, false], [6, false], [7, false]]
 
 const BOY_SPEED := 3.0
-const BOY_CELL_UNITS := 1.1      # altura de uma célula de frame, em unidades do mundo
+const BOY_CELL_UNITS := 1.6      # altura de uma célula de frame, em unidades do mundo
 const BOY_BOUNDS := 8.0
 const WALK_FPS := 8.0
 
-const FAUN_CELL_UNITS := 1.8
+const FAUN_CELL_UNITS := 2.4
 const FAUN_WANDER_SPEED := 0.8
 const FAUN_FLY_SPEED := 6.5
 const FAUN_CLIMB_SPEED := 2.2
@@ -45,9 +45,10 @@ var faun_state := FaunState.WANDER
 var faun_dir := 0
 var faun_anim := 0.0
 var faun_timer := 0.0
-var faun_home := Vector3(-1.0, 0.0, -2.0)
+var faun_home := Vector3(-2.0, 0.0, -3.0)  # longe o bastante para não detectar o menino no início
 var faun_target := Vector3.ZERO
 var faun_flee_dir := Vector3.ZERO
+var faun_alert: Label3D
 
 
 func _ready() -> void:
@@ -73,6 +74,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	delta = minf(delta, 0.05)  # evita saltos em quedas de FPS
 	_update_boy(delta)
 	_update_faun(delta)
 
@@ -139,7 +141,7 @@ func _faun_wander(delta: float) -> void:
 
 
 func _pick_wander_target() -> void:
-	var offset := Vector3(randf_range(-1.5, 1.5), 0.0, randf_range(-1.2, 1.2))
+	var offset := Vector3(randf_range(-1.2, 1.2), 0.0, randf_range(-0.8, 0.8))
 	faun_target = faun_home + offset
 	faun_timer = randf_range(1.0, 2.5)  # tempo parado ao chegar
 
@@ -155,6 +157,9 @@ func _startle() -> void:
 
 func _take_off() -> void:
 	faun_state = FaunState.FLYING
+	if faun_alert:
+		faun_alert.queue_free()
+		faun_alert = null
 	faun_anim = 0.0
 	faun_flee_dir = faun.position - boy.position
 	faun_flee_dir.y = 0.0
@@ -176,12 +181,16 @@ func _faun_fly(delta: float) -> void:
 func _show_alert() -> void:
 	var alert := Label3D.new()
 	alert.text = "!"
-	alert.font_size = 96
+	alert.font_size = 160
+	alert.outline_size = 28
+	alert.outline_modulate = Color(0.1, 0.05, 0.05)
 	alert.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	alert.modulate = Color(1.0, 0.3, 0.2)
-	alert.position = Vector3(0, FAUN_CELL_UNITS * 0.75, 0)
+	alert.position = Vector3(0, FAUN_CELL_UNITS * 1.05, 0)
 	alert.no_depth_test = true
+	alert.render_priority = 10
 	faun.add_child(alert)
+	faun_alert = alert
 
 
 # --- Sprites -------------------------------------------------------------
@@ -246,7 +255,7 @@ func _build_clearing() -> void:
 	plane.size = Vector2(30, 30)
 	ground.mesh = plane
 	var ground_mat := StandardMaterial3D.new()
-	ground_mat.albedo_color = Color(0.35, 0.6, 0.3)
+	ground_mat.albedo_color = Color(0.28, 0.48, 0.22)
 	ground.material_override = ground_mat
 	add_child(ground)
 
@@ -296,9 +305,9 @@ func _build_bush() -> void:
 
 func _build_camera() -> void:
 	var cam := Camera3D.new()
-	cam.fov = 45.0
-	cam.position = Vector3(0, 9, 11)
-	cam.rotation_degrees = Vector3(-38, 0, 0)
+	cam.fov = 40.0
+	cam.position = Vector3(0, 7, 9.5)
+	cam.rotation_degrees = Vector3(-34, 0, 0)
 	add_child(cam)
 	cam.current = true
 
