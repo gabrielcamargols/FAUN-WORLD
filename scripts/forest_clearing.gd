@@ -1,48 +1,75 @@
 extends Node3D
 
 ## Primeira cena: clareira na floresta. O menino (WASD / setas) está escondido
-## atrás de uma moita. Quando ele chega perto, Brasatã percebe e foge.
-## Placeholders: árvores, moita e alerta são formas simples.
+## atrás de uma moita. Quando ele chega perto, Brasatã percebe, se assusta
+## e foge voando por cima das árvores.
+## Placeholders: árvores, moita e chão são formas simples.
+
+# Ordem das linhas nas folhas de sprite (8 direções, como vistas pela câmera):
+# 0 frente, 1 frente-direita, 2 direita, 3 costas-direita,
+# 4 costas, 5 costas-esquerda, 6 esquerda, 7 frente-esquerda.
+# Cada entrada: [linha da folha, espelhar horizontalmente].
+const BOY_ROWS := [[0, false], [1, false], [2, false], [3, false], [4, false], [5, false], [6, false], [7, false]]
+# Na folha do Brasatã, a linha 1 olha para a esquerda (igual à linha 7),
+# então a frente-direita usa a linha 7 espelhada.
+const FAUN_ROWS := [[0, false], [7, true], [2, false], [3, false], [4, false], [5, false], [6, false], [7, false]]
 
 const BOY_SPEED := 3.0
-const FAUN_FLEE_SPEED := 6.0
-const DETECT_RADIUS := 4.5
-const BOY_CELL_UNITS := 1.1    # altura de uma célula de frame, em unidades do mundo
-const FAUN_CELL_UNITS := 2.0
-const WALK_FPS := 8.0
+const BOY_CELL_UNITS := 1.1      # altura de uma célula de frame, em unidades do mundo
 const BOY_BOUNDS := 8.0
-const FAUN_DESPAWN_DISTANCE := 14.0
+const WALK_FPS := 8.0
+
+const FAUN_CELL_UNITS := 1.8
+const FAUN_WANDER_SPEED := 0.8
+const FAUN_FLY_SPEED := 6.5
+const FAUN_CLIMB_SPEED := 2.2
+const FAUN_FLY_FPS := 10.0
+const FAUN_STARTLE_TIME := 0.7   # pausa assustado antes de levantar voo
+const DETECT_RADIUS := 4.5
+const FAUN_DESPAWN_DISTANCE := 18.0
+
+enum FaunState { WANDER, STARTLED, FLYING }
 
 var boy: Sprite3D
 var faun: Sprite3D
 var boy_walk_tex: Texture2D
 var boy_idle_tex: Texture2D
+var faun_walk_tex: Texture2D
+var faun_fly_tex: Texture2D
+
 var boy_walking := false
-var fleeing := false
-var walk_time := 0.0
+var boy_dir := 0
+var boy_anim := 0.0
+
+var faun_state := FaunState.WANDER
+var faun_dir := 0
+var faun_anim := 0.0
+var faun_timer := 0.0
+var faun_home := Vector3(-1.0, 0.0, -2.0)
+var faun_target := Vector3.ZERO
+var faun_flee_dir := Vector3.ZERO
 
 
 func _ready() -> void:
 	boy_walk_tex = load("res://assets/sprites/boy_walk.png")
 	boy_idle_tex = load("res://assets/sprites/boy_idle.png")
-	var faun_tex: Texture2D = load("res://assets/sprites/brasata.png")
+	faun_walk_tex = load("res://assets/sprites/brasata_walk.png")
+	faun_fly_tex = load("res://assets/sprites/brasata_fly.png")
 
 	_build_environment()
 	_build_clearing()
 	_build_bush()
 	_build_camera()
 
-	boy = Sprite3D.new()
-	add_child(boy)
+	boy = _make_sprite()
+	boy.position = Vector3(2.5, 0.0, 1.5)
+	boy_dir = 4  # de costas para a câmera, espiando a clareira
 	_set_boy_idle()
-	boy.position.x = 2.5
-	boy.position.z = 1.5
 
-	faun = Sprite3D.new()
-	add_child(faun)
-	_apply_layout(faun, faun_tex, 1, 1, FAUN_CELL_UNITS)
-	faun.position.x = -1.0
-	faun.position.z = -2.0
+	faun = _make_sprite()
+	faun.position = faun_home
+	_apply_layout(faun, faun_walk_tex, 4, 8, FAUN_CELL_UNITS)
+	_pick_wander_target()
 
 
 func _process(delta: float) -> void:
@@ -50,38 +77,100 @@ func _process(delta: float) -> void:
 	_update_faun(delta)
 
 
-# --- Movimento do menino -------------------------------------------------
+# --- Menino --------------------------------------------------------------
 
 func _update_boy(delta: float) -> void:
 	var input := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 	if input.length() > 0.1:
 		boy.position.x = clampf(boy.position.x + input.x * BOY_SPEED * delta, -BOY_BOUNDS, BOY_BOUNDS)
 		boy.position.z = clampf(boy.position.z + input.y * BOY_SPEED * delta, -BOY_BOUNDS, BOY_BOUNDS)
+		boy_dir = _dir_index(input.x, input.y)
 		if not boy_walking:
-			_set_boy_walk()
-		walk_time += delta * WALK_FPS
-		boy.frame = int(walk_time) % 4  # linha 0 = de frente; outras direções ainda não ligadas
+			boy_walking = true
+			_apply_layout(boy, boy_walk_tex, 4, 8, BOY_CELL_UNITS)
+		boy_anim += delta * WALK_FPS
+		_show_frame(boy, BOY_ROWS, boy_dir, int(boy_anim) % 4)
 	elif boy_walking:
 		_set_boy_idle()
 
 
-# --- Brasatã: percebe o menino e foge ------------------------------------
+func _set_boy_idle() -> void:
+	boy_walking = false
+	_apply_layout(boy, boy_idle_tex, 4, 2, BOY_CELL_UNITS)
+	# A folha parada tem as 8 direções em sequência (4 por linha), sem espelhamento.
+	boy.flip_h = false
+	boy.frame = boy_dir
+
+
+# --- Brasatã -------------------------------------------------------------
 
 func _update_faun(delta: float) -> void:
 	if faun == null:
 		return
-	if not fleeing and _flat_distance(boy.position, faun.position) < DETECT_RADIUS:
-		fleeing = true
-		_show_alert()
 
-	if fleeing:
-		var away := faun.position - boy.position
-		away.y = 0.0
-		away = away.normalized()
-		faun.position += away * FAUN_FLEE_SPEED * delta
-		if faun.position.length() > FAUN_DESPAWN_DISTANCE:
-			faun.queue_free()
-			faun = null
+	if faun_state == FaunState.WANDER and _flat_distance(boy.position, faun.position) < DETECT_RADIUS:
+		_startle()
+
+	match faun_state:
+		FaunState.WANDER:
+			_faun_wander(delta)
+		FaunState.STARTLED:
+			faun_timer -= delta
+			if faun_timer <= 0.0:
+				_take_off()
+		FaunState.FLYING:
+			_faun_fly(delta)
+
+
+func _faun_wander(delta: float) -> void:
+	var to_target := faun_target - faun.position
+	to_target.y = 0.0
+	if to_target.length() < 0.1:
+		faun_timer -= delta
+		_show_frame(faun, FAUN_ROWS, faun_dir, 0)
+		if faun_timer <= 0.0:
+			_pick_wander_target()
+		return
+	var step := to_target.normalized() * FAUN_WANDER_SPEED * delta
+	faun.position += step if step.length() < to_target.length() else to_target
+	faun_dir = _dir_index(to_target.x, to_target.z)
+	faun_anim += delta * WALK_FPS * 0.6
+	_show_frame(faun, FAUN_ROWS, faun_dir, int(faun_anim) % 4)
+
+
+func _pick_wander_target() -> void:
+	var offset := Vector3(randf_range(-1.5, 1.5), 0.0, randf_range(-1.2, 1.2))
+	faun_target = faun_home + offset
+	faun_timer = randf_range(1.0, 2.5)  # tempo parado ao chegar
+
+
+func _startle() -> void:
+	faun_state = FaunState.STARTLED
+	faun_timer = FAUN_STARTLE_TIME
+	var to_boy := boy.position - faun.position
+	faun_dir = _dir_index(to_boy.x, to_boy.z)  # vira para o menino
+	_show_frame(faun, FAUN_ROWS, faun_dir, 0)
+	_show_alert()
+
+
+func _take_off() -> void:
+	faun_state = FaunState.FLYING
+	faun_anim = 0.0
+	faun_flee_dir = faun.position - boy.position
+	faun_flee_dir.y = 0.0
+	faun_flee_dir = faun_flee_dir.normalized()
+	faun_dir = _dir_index(faun_flee_dir.x, faun_flee_dir.z)
+	_apply_layout(faun, faun_fly_tex, 4, 8, FAUN_CELL_UNITS * 1.3)
+
+
+func _faun_fly(delta: float) -> void:
+	faun.position += faun_flee_dir * FAUN_FLY_SPEED * delta
+	faun.position.y += FAUN_CLIMB_SPEED * delta
+	faun_anim += delta * FAUN_FLY_FPS
+	_show_frame(faun, FAUN_ROWS, faun_dir, int(faun_anim) % 4)
+	if Vector2(faun.position.x, faun.position.z).length() > FAUN_DESPAWN_DISTANCE:
+		faun.queue_free()
+		faun = null
 
 
 func _show_alert() -> void:
@@ -90,32 +179,42 @@ func _show_alert() -> void:
 	alert.font_size = 96
 	alert.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	alert.modulate = Color(1.0, 0.3, 0.2)
-	alert.position = Vector3(0, FAUN_CELL_UNITS + 0.4, 0)
+	alert.position = Vector3(0, FAUN_CELL_UNITS * 0.75, 0)
+	alert.no_depth_test = true
 	faun.add_child(alert)
 
 
 # --- Sprites -------------------------------------------------------------
+
+func _make_sprite() -> Sprite3D:
+	var s := Sprite3D.new()
+	s.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	s.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
+	s.shaded = false
+	add_child(s)
+	return s
+
 
 func _apply_layout(sprite: Sprite3D, tex: Texture2D, hframes: int, vframes: int, cell_units: float) -> void:
 	sprite.texture = tex
 	sprite.hframes = hframes
 	sprite.vframes = vframes
 	sprite.pixel_size = cell_units / (float(tex.get_height()) / vframes)
-	sprite.position.y = cell_units / 2.0   # pés na altura do chão
-	sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
+	sprite.offset.y = (float(tex.get_height()) / vframes) / 2.0  # pés no chão
 
 
-func _set_boy_idle() -> void:
-	boy_walking = false
-	_apply_layout(boy, boy_idle_tex, 4, 2, BOY_CELL_UNITS)
-	boy.frame = 0
+func _show_frame(sprite: Sprite3D, rows: Array, dir: int, col: int) -> void:
+	var entry: Array = rows[dir]
+	sprite.flip_h = entry[1]
+	sprite.frame = int(entry[0]) * sprite.hframes + col
 
 
-func _set_boy_walk() -> void:
-	boy_walking = true
-	_apply_layout(boy, boy_walk_tex, 4, 8, BOY_CELL_UNITS)
+## Converte um vetor no plano (x = direita da tela, y = em direção à câmera)
+## no índice de direção 0..7 (0 = frente, 2 = direita, 4 = costas, 6 = esquerda).
+func _dir_index(x: float, y: float) -> int:
+	var angle := atan2(x, y)
+	return posmod(roundi(angle / (PI / 4.0)), 8)
 
 
 # --- Cenário -------------------------------------------------------------
@@ -182,7 +281,7 @@ func _build_clearing() -> void:
 
 
 func _build_bush() -> void:
-	# Moita entre a câmera e o menino: ele fica escondido até entrar na frente dela
+	# Moita entre a câmera e o menino: ele fica escondido até sair de trás dela
 	var bush := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = 1.5

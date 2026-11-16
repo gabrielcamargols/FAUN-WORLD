@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dnqisjse2jb"
-path="res://.godot/imported/brasata.png-7608be59fd05f900c5f256b8edacd6a0.ctex"
+uid="uid://3nobtgduigrv"
+path="res://.godot/imported/brasata_fly.png-887502453427272ba8ef4e2466285e8e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/brasata.png"
-dest_files=["res://.godot/imported/brasata.png-7608be59fd05f900c5f256b8edacd6a0.ctex"]
+source_file="res://assets/sprites/brasata_fly.png"
+dest_files=["res://.godot/imported/brasata_fly.png-887502453427272ba8ef4e2466285e8e.ctex"]
 
 [params]
 
