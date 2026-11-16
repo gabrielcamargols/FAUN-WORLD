@@ -3,6 +3,7 @@ extends Node3D
 ## Primeira cena: clareira na floresta. O menino (WASD / setas) está escondido
 ## atrás de uma moita. Quando ele chega perto, Brasatã percebe, se assusta
 ## e foge voando por cima das árvores.
+## No celular (ou com o mouse), segure o dedo na tela: o menino anda até aquele ponto.
 ## Placeholders: árvores, moita e chão são formas simples.
 
 # Ordem das linhas nas folhas de sprite (8 direções, como vistas pela câmera):
@@ -30,6 +31,9 @@ const FAUN_DESPAWN_DISTANCE := 18.0
 
 enum FaunState { WANDER, STARTLED, FLYING }
 
+var cam: Camera3D
+var pointer_down := false
+var pointer_pos := Vector2.ZERO
 var boy: Sprite3D
 var faun: Sprite3D
 var boy_walk_tex: Texture2D
@@ -73,6 +77,15 @@ func _ready() -> void:
 	_pick_wander_target()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	# O toque na tela chega como mouse (emulação padrão do Godot).
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		pointer_down = event.pressed
+		pointer_pos = event.position
+	elif event is InputEventMouseMotion and pointer_down:
+		pointer_pos = event.position
+
+
 func _process(delta: float) -> void:
 	delta = minf(delta, 0.05)  # evita saltos em quedas de FPS
 	_update_boy(delta)
@@ -83,6 +96,8 @@ func _process(delta: float) -> void:
 
 func _update_boy(delta: float) -> void:
 	var input := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	if input.length() < 0.1 and pointer_down:
+		input = _pointer_direction()
 	if input.length() > 0.1:
 		boy.position.x = clampf(boy.position.x + input.x * BOY_SPEED * delta, -BOY_BOUNDS, BOY_BOUNDS)
 		boy.position.z = clampf(boy.position.z + input.y * BOY_SPEED * delta, -BOY_BOUNDS, BOY_BOUNDS)
@@ -102,6 +117,17 @@ func _set_boy_idle() -> void:
 	# A folha parada tem as 8 direções em sequência (4 por linha), sem espelhamento.
 	boy.flip_h = false
 	boy.frame = boy_dir
+
+
+## Direção do menino até o ponto do chão sob o dedo/mouse (zero se já chegou).
+func _pointer_direction() -> Vector2:
+	var origin := cam.project_ray_origin(pointer_pos)
+	var normal := cam.project_ray_normal(pointer_pos)
+	if absf(normal.y) < 0.001:
+		return Vector2.ZERO
+	var hit := origin + normal * (-origin.y / normal.y)
+	var to := Vector2(hit.x - boy.position.x, hit.z - boy.position.z)
+	return to.normalized() if to.length() > 0.25 else Vector2.ZERO
 
 
 # --- Brasatã -------------------------------------------------------------
@@ -304,7 +330,7 @@ func _build_bush() -> void:
 
 
 func _build_camera() -> void:
-	var cam := Camera3D.new()
+	cam = Camera3D.new()
 	cam.fov = 40.0
 	cam.position = Vector3(0, 7, 9.5)
 	cam.rotation_degrees = Vector3(-34, 0, 0)

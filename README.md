@@ -7,6 +7,7 @@ RPG de criaturas inspirado em Pokémon e Dragon Quest, feito em Godot 4.7, com m
 ## Controles
 
 - Setas ou WASD: andar
+- Celular ou mouse: segure o dedo (ou o botão) na tela e o menino anda até aquele ponto
 
 ## Cena atual: a clareira
 
