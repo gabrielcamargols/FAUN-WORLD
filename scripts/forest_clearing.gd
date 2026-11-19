@@ -327,8 +327,8 @@ func _build_clearing() -> void:
 	# uma faixa de terra na lateral e uma borda decorada, como um tatame.
 	var base_size := Vector3(22, 1.2, 18)
 	_mesh(_box(base_size), _toon(Color(0.55, 0.38, 0.24), 0.05), Vector3(0, -0.6, 0))
-	_mesh(_box(Vector3(base_size.x + 0.01, 0.08, base_size.z + 0.01)), _toon(Color(0.45, 0.5, 0.24), 0.0), Vector3(0, -0.04, 0))
-	_mesh(_box(Vector3(17, 0.06, 13)), _toon(Color(0.66, 0.55, 0.34), 0.0), Vector3(0, -0.01, 0))  # terra clara da clareira
+	_mesh(_box(Vector3(base_size.x + 0.01, 0.08, base_size.z + 0.01)), _toon(Color(0.45, 0.5, 0.24), 0.0), Vector3(0, 0.01, 0))
+	_mesh(_box(Vector3(17, 0.06, 13)), _toon(Color(0.66, 0.55, 0.34), 0.0), Vector3(0, 0.03, 0))  # terra clara da clareira
 	# Faixa decorada na frente da base, como a borda de um tatame
 	_mesh(_box(Vector3(base_size.x + 0.04, 0.35, 0.06)), _toon(Color(0.42, 0.47, 0.22), 0.0), Vector3(0, -0.45, base_size.z / 2.0 + 0.01))
 
