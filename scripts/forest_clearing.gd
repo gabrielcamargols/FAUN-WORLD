@@ -252,88 +252,134 @@ func _dir_index(x: float, y: float) -> int:
 	return posmod(roundi(angle / (PI / 4.0)), 8)
 
 
-# --- Cenário -------------------------------------------------------------
+# --- Cenário (estilo maquete de brinquedo) --------------------------------
+# Cores quentes e terrosas, sombreamento de desenho (toon), contorno escuro
+# grosso nas formas e um filtro de fita VHS por cima da tela.
+
+const BG_CREAM := Color(0.93, 0.89, 0.8)
+const OUTLINE_COLOR := Color(0.16, 0.11, 0.09)
+
+
+## Material toon com contorno escuro (técnica do "casco invertido").
+func _toon(color: Color, outline := 0.04) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	m.roughness = 1.0
+	if outline > 0.0:
+		var o := StandardMaterial3D.new()
+		o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		o.cull_mode = BaseMaterial3D.CULL_FRONT
+		o.grow = true
+		o.grow_amount = outline
+		o.albedo_color = OUTLINE_COLOR
+		m.next_pass = o
+	return m
+
+
+func _mesh(mesh: Mesh, mat: Material, pos: Vector3) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = pos
+	add_child(mi)
+	return mi
+
 
 func _build_environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.45, 0.6, 0.5)
+	env.background_color = BG_CREAM
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.6, 0.7, 0.6)
-	env.glow_enabled = true
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.6, 0.7, 0.65)
-	env.fog_density = 0.01
+	env.ambient_light_color = Color(0.95, 0.88, 0.78)
+	env.ambient_light_energy = 0.45
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, -30, 0)
+	sun.rotation_degrees = Vector3(-60, -35, 0)
+	sun.light_color = Color(1.0, 0.94, 0.84)
+	sun.light_energy = 0.85
 	sun.shadow_enabled = true
+	sun.shadow_opacity = 0.6
+	sun.shadow_blur = 2.0
 	add_child(sun)
+
+	# Filtro VHS por cima de tudo
+	var layer := CanvasLayer.new()
+	layer.layer = 10
+	add_child(layer)
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://shaders/vhs.gdshader")
+	rect.material = sm
+	layer.add_child(rect)
 
 
 func _build_clearing() -> void:
-	var ground := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(30, 30)
-	ground.mesh = plane
-	var ground_mat := StandardMaterial3D.new()
-	ground_mat.albedo_color = Color(0.28, 0.48, 0.22)
-	ground.material_override = ground_mat
-	add_child(ground)
+	# A clareira é uma "maquete": uma base grossa com grama por cima,
+	# uma faixa de terra na lateral e uma borda decorada, como um tatame.
+	var base_size := Vector3(22, 1.2, 18)
+	_mesh(_box(base_size), _toon(Color(0.55, 0.38, 0.24), 0.05), Vector3(0, -0.6, 0))
+	_mesh(_box(Vector3(base_size.x + 0.01, 0.08, base_size.z + 0.01)), _toon(Color(0.45, 0.5, 0.24), 0.0), Vector3(0, -0.04, 0))
+	_mesh(_box(Vector3(17, 0.06, 13)), _toon(Color(0.66, 0.55, 0.34), 0.0), Vector3(0, -0.01, 0))  # terra clara da clareira
+	# Faixa decorada na frente da base, como a borda de um tatame
+	_mesh(_box(Vector3(base_size.x + 0.04, 0.35, 0.06)), _toon(Color(0.42, 0.47, 0.22), 0.0), Vector3(0, -0.45, base_size.z / 2.0 + 0.01))
 
-	# Anel de árvores em volta da clareira (placeholders)
-	var tree_count := 14
-	for i in tree_count:
-		var angle := TAU * i / tree_count
-		var pos := Vector3(cos(angle) * 13.0, 2.0, sin(angle) * 13.0)
+	# Árvores roliças em volta: tronco curto e copa redonda de poucos polígonos
+	var spots := [
+		Vector3(-9, 0, -7), Vector3(-6, 0, -7.8), Vector3(-2.5, 0, -8), Vector3(1.5, 0, -7.6),
+		Vector3(5, 0, -7.9), Vector3(8.5, 0, -7), Vector3(-9.5, 0, -3.5), Vector3(9.5, 0, -3.2),
+		Vector3(-9.6, 0, 0.5), Vector3(9.7, 0, 1.0), Vector3(-9.2, 0, 4.5), Vector3(9.0, 0, 5.5),
+	]
+	var greens := [Color(0.32, 0.45, 0.2), Color(0.4, 0.5, 0.22), Color(0.28, 0.4, 0.2)]
+	for i in spots.size():
+		var p: Vector3 = spots[i]
+		var trunk := CylinderMesh.new()
+		trunk.top_radius = 0.28
+		trunk.bottom_radius = 0.38
+		trunk.height = 1.4
+		trunk.radial_segments = 8
+		_mesh(trunk, _toon(Color(0.5, 0.33, 0.2)), p + Vector3(0, 0.7, 0))
+		var crown := SphereMesh.new()
+		var r := 1.5 + (i % 3) * 0.25
+		crown.radius = r
+		crown.height = r * 1.8
+		crown.radial_segments = 10
+		crown.rings = 6
+		_mesh(crown, _toon(greens[i % 3]), p + Vector3(0, 1.4 + r * 0.8, 0))
 
-		var trunk := MeshInstance3D.new()
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.4
-		cyl.bottom_radius = 0.5
-		cyl.height = 4.0
-		trunk.mesh = cyl
-		var trunk_mat := StandardMaterial3D.new()
-		trunk_mat.albedo_color = Color(0.35, 0.22, 0.12)
-		trunk.material_override = trunk_mat
-		trunk.position = pos
-		add_child(trunk)
 
-		var crown := MeshInstance3D.new()
-		var sphere := SphereMesh.new()
-		sphere.radius = 2.2
-		sphere.height = 4.4
-		crown.mesh = sphere
-		var crown_mat := StandardMaterial3D.new()
-		crown_mat.albedo_color = Color(0.15, 0.4, 0.2)
-		crown.material_override = crown_mat
-		crown.position = pos + Vector3(0, 3.2, 0)
-		add_child(crown)
+func _box(size: Vector3) -> BoxMesh:
+	var b := BoxMesh.new()
+	b.size = size
+	return b
 
 
 func _build_bush() -> void:
-	# Moita entre a câmera e o menino: ele fica escondido até sair de trás dela
-	var bush := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 1.5
-	sphere.height = 2.2
-	bush.mesh = sphere
-	var bush_mat := StandardMaterial3D.new()
-	bush_mat.albedo_color = Color(0.12, 0.42, 0.18)
-	bush.material_override = bush_mat
-	bush.position = Vector3(2.2, 0.8, 3.2)
-	add_child(bush)
+	# Moita entre a câmera e o menino: ele fica escondido até sair de trás dela.
+	# Três bolas de folhas juntas, para ter cara de moita.
+	var mat := _toon(Color(0.3, 0.45, 0.2))
+	for b in [[Vector3(2.2, 0.75, 3.2), 1.1], [Vector3(1.3, 0.55, 3.4), 0.8], [Vector3(3.1, 0.55, 3.3), 0.85]]:
+		var sphere := SphereMesh.new()
+		sphere.radius = b[1]
+		sphere.height = b[1] * 1.7
+		sphere.radial_segments = 10
+		sphere.rings = 6
+		_mesh(sphere, mat, b[0])
 
 
 func _build_camera() -> void:
 	cam = Camera3D.new()
-	cam.fov = 40.0
-	cam.position = Vector3(0, 7, 9.5)
-	cam.rotation_degrees = Vector3(-34, 0, 0)
+	cam.fov = 36.0
+	cam.position = Vector3(0, 10, 15.5)
+	cam.rotation_degrees = Vector3(-33, 0, 0)
 	add_child(cam)
 	cam.current = true
 
